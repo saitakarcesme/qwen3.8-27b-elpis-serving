@@ -2,30 +2,98 @@
 
 A serving recipe for **Qwen3.8-27B** built on **Elpis**, with **262K text context**, cache-aware request routing, image and document service integration, and automatic engine recovery.
 
+## Before → after
+
+| What improved | Before | After | What this means |
+|---|---:|---:|---|
+| **Decode at ~262K context** | **50.04 tok/s** | **92.14 tok/s** | **1.84× decode rate** after moving from the previous LLMRig TP2 engine to Elpis. Different precision profiles; credit to Elpis. |
+| **Cold time to first token** | **423.83 s** | **292.60 s** | **31% less waiting** on the same long input. |
+| **Two independent long requests** | **560.02 s serial** | **295.32 s parallel mean** | **1.90× two-job completion rate** from independent engines. |
+| **Repeated conversation turns** | **20–25 s/turn** | **2–3 s/turn** | Cache-aware routing avoids repeated prefill. Operational observations, not identical-prompt replay. |
+| **PDF formula/table checks** | **4 / 8 passed · Standard** | **7 / 8 passed · Advanced** | **Three previously failing checks fixed** on one scientific PDF. This is a focused document check, not general OCR accuracy. |
+
+These rows have separate baselines: **engine adoption**, **our routing/orchestration**, and **MinerU mode selection/integration**. They are not cumulative speedups. PDF extraction took longer in Advanced mode: **41.48 → 94.49 s median** for the same 15-page document.
+
+```mermaid
+xychart-beta
+    title "Decode at ~262K context — higher is better"
+    x-axis ["Previous LLMRig TP2", "Elpis single GPU"]
+    y-axis "Tokens per second" 0 --> 100
+    bar [50.04, 92.14]
+```
+
+**Why it matters beyond tok/s:** the serving stack also exposes structured PDF extraction, native PDF object export, task-specific OCR, and document sessions that keep the media model loaded across requests. These run through separate local backends, coordinated with Elpis text serving.
+
+[PDF extraction improvements](#pdf-extraction-what-got-better) · [Performance details](#performance-measurement-details) · [Architecture and trade-offs](#what-changed-and-why-it-helps) · [Setup](#using-this-recipe) · [Credits](#credits-and-attribution)
+
 The reference deployment runs two independent text engines on **2 × RTX 3090 (24 GiB each)** with a **32 GB RAM host**. GPU1 is shared with the separate image and document backends.
 
 **Credit:** the inference engine and its optimizations are [Elpis](https://github.com/gildrb/elpis), by **Gil Rodrigues / gildrb**. This recipe adds deployment and service orchestration around Elpis. It does not claim authorship of Elpis's kernels, DFlash2 implementation, quantization, or native long-context support.
 
-Reference upstream revision: [`13e8b593ea4c65f605b5fe7ac7d5ebb7a24f3c19`](https://github.com/gildrb/elpis/tree/13e8b593ea4c65f605b5fe7ac7d5ebb7a24f3c19). Measurements below were recorded on October 29–30, 2026; implementation inspected November 5, 2026. “Original Elpis” means that pinned revision, not the latest upstream release.
+Reference upstream revision: [`13e8b593ea4c65f605b5fe7ac7d5ebb7a24f3c19`](https://github.com/gildrb/elpis/tree/13e8b593ea4c65f605b5fe7ac7d5ebb7a24f3c19). Engine measurements were recorded on October 29–30, 2026; PDF mode comparisons on October 22; router observations on November 1. Implementation inspected November 5, 2026. “Original Elpis” means that pinned revision, not the latest upstream release.
 
-## What changed, and why it helps
+## PDF extraction: what got better
 
-| Area | Original Elpis / starting point | This recipe | Practical benefit and trade-off |
-|---|---|---|---|
-| GPU topology | One text engine on one RTX 3090 | One complete engine on each GPU; one active generation per engine | Two independent jobs can run concurrently. This is not tensor parallelism and does not double single-request speed. |
-| Request routing | Direct access to a text engine | A local router with health checks, per-engine admission, and conversation affinity | Clients use one endpoint; repeat turns preferentially reuse the engine holding their prefix cache. |
-| Clients without affinity headers | Our initial router balanced requests without recognizing the conversation | Derive an affinity key from the model and first two messages when no explicit header is supplied | Avoid unnecessary lane switching and repeated prefill. Affinity is best-effort, not a guarantee; availability and shared conversation prefixes matter. |
-| Image requests | Elpis text serving path | Route images to a separate local Ollama vision model | One API can serve text and images. Vision is not added to Elpis itself, and its context limit is separate. |
-| GPU sharing | No LLMRig media coordination | Reserve GPU1, wait for its text work, stop lane1, run media, then restore Elpis | Reuse the same hardware for text and media while lane0 remains available. Lane1's warm cache and second text slot are unavailable during media work. |
-| Multi-request media work | Per-request model transitions | Exclusive media sessions with idle and maximum-duration limits, cleanup, and startup recovery | Keep the media model loaded across a document/session rather than switching for every page. No quantified speedup is claimed for this addition. |
-| Auxiliary APIs | Separate application services | Routes for PDF/MinerU, OCR, transcription, embeddings, and auxiliary health | Existing local services share a gateway. Their models and servers remain separate dependencies. |
-| Sampling | Greedy Elpis text generation | Preserve greedy text; expose a separate `qwen3.8-27b-sampled` Ollama profile | Stochastic generation is available without changing Elpis's decoder. This profile uses a different backend and a 65,536-token context. |
-| Observability | Engine-local information | Usage JSONL, active-request tracking, GPU/RAM telemetry, slot availability at `/props` | Distinguish cache misses, waiting/prefill, and generated token counts. Stream timing is router-observed and is not a pure GPU decode benchmark. |
-| Terminal failures | Manual intervention for sticky native-generator failure | A separate recovery service confirms the failure and restarts only the failed, idle engine | Reduce manual recovery while preserving healthy engines. It never replays inference requests and does not prevent OOM. |
-| Host RAM | Upstream EXL3 entrypoint enables an 8 GiB host KV page tier | Disable the additional tier; retain GPU prefix cache and existing recurrent-state cache | Leave RAM for two engines and application services. A local 2 GiB tier experiment showed no meaningful TTFT benefit for the tested workload. |
-| Build and deployment | Upstream build/launch defaults | Lower build concurrency, serialize base fetching, pin the image, verify model hashes, use systemd and container limits | Fit the host's memory budget and detect accidental engine/model changes at startup. |
+We added **MinerU Advanced mode selection** to the local document API and integrated document workloads with the Elpis gateway. The measured extraction improvement comes from **MinerU's Advanced mode**, not fine-tuning Qwen or changing Elpis kernels. Standard remains the default; request `tier=advanced` for the higher-quality path.
 
-## Before / after: measured results
+### Concrete extraction fixes
+
+Same 15-page `attention.pdf`, MinerU **4.0.12**, same Q8 model, two full runs per mode, in **Standard → Advanced → Advanced → Standard** order. Source pages were manually checked against the extracted formulas and table cells.
+
+| Source content | Before: Standard | After: Advanced |
+|---|---|---|
+| **MultiHead / head_i equations, p.5** | Added vertical bars that do not exist in the source | **Removed the spurious bars; preserved the two equations correctly** |
+| **Transformer base training cost, Table 2, p.8** | Split `3.3 ×` and `10^18` into separate cells | **Kept `3.3 × 10^18` together in one merged cell** |
+| **Transformer big training cost, Table 2, p.8** | Split `2.3 ×` and `10^19` into separate cells | **Kept `2.3 × 10^19` together in one merged cell** |
+| Attention, FFN, positional encoding, and learning-rate checks | Passed | **Still passed** |
+| Summation formula in footnote 4, p.4 | Broken sum/index notation | **Still not valid LaTeX**; improved readability did not count as a pass |
+
+**Result: 4/8 → 7/8 focused checks passed.** Both Advanced runs reproduced the fixes, with no hand-edited output or document-specific postprocessing. This eight-check set targets known problem areas in one document; it does not establish a general accuracy percentage. Extra generated chart descriptions were not validated.
+
+```mermaid
+xychart-beta
+    title "Focused formula/table checks on one PDF — higher is better"
+    x-axis ["Standard", "Advanced"]
+    y-axis "Checks passed out of 8" 0 --> 8
+    bar [4, 7]
+```
+
+### Quality has a measurable cost
+
+| Same 15-page PDF | Standard | Advanced |
+|---|---:|---:|
+| Median extraction time | **41.48 s** | **94.49 s** |
+| Individual runs | 39.98 / 42.99 s | 96.04 / 92.94 s |
+| Pages returned | 15 / 15 | 15 / 15 |
+| Images/source crops | 14 | 17 |
+| Markdown across the two repeats | Identical SHA256 | Identical SHA256 |
+
+Advanced took **2.28× as long** in this comparison. Duration includes model startup, extraction, and ZIP preparation; upload and queue wait are excluded. Other Qwen work was active, so these are not idle-machine benchmarks. Measurement date: **October 22, 2026**, before Elpis integration; these extraction timings are not a benchmark of the later dual-Elpis/media-switching stack. [Recorded run metrics](evidence/pdf-comparison.json).
+
+### Document capabilities added to the serving stack
+
+| Capability | What the integration provides | Scope |
+|---|---|---|
+| **Structured PDF extraction** | Markdown, structured JSON, intermediate/model output, and image crops in a downloadable ZIP | MinerU backend; `POST /v1/documents`, with `tier=standard` or `tier=advanced` |
+| **Native PDF fidelity** | Export text spans with positions/colors, vector drawings, embedded images/masks, annotations, and page SVGs | PyMuPDF backend through `/v1/pdf/objects`; preserves available native objects instead of asking OCR to reconstruct them. Scans do not contain recoverable original vectors/native text. |
+| **Task-specific OCR** | Dedicated `ocr`, `formula`, `table`, `chart`, and `spotting` modes | Separate PaddleOCR-VL backend through `/v1/ocr`; no accuracy gain is claimed here without a comparative evaluation. |
+| **Multi-page/session handling** | Keep a media model loaded for a bounded session and restore the text engine afterward | Avoid per-page unload/reload cycles; no quantified session-speed gain is claimed. |
+| **Traceable outputs** | Page selection, source crops, downloadable job artifacts, and resumable result downloads | Makes manual source checking practical; does not guarantee a correct extraction or final answer. |
+| **Text service during media work** | Reserve GPU1 for media while lane0 continues text serving | Second text lane and its warm cache are temporarily unavailable. |
+
+The native-object test source checks selected-page export, red text color, vector drawings, and the page SVG on a synthetic PDF. That is a feature regression check, not a full document-fidelity evaluation. The extraction/extension services themselves are **external dependencies, not bundled implementations in this recipe**; this repository contains the gateway and GPU coordination around them.
+
+With the separate PDF service installed, select Advanced explicitly:
+
+```bash
+curl http://127.0.0.1:11446/v1/documents \
+  -F 'file=@document.pdf;type=application/pdf' \
+  -F 'tier=advanced'
+```
+
+The API returns a job ID; poll `/v1/documents/{id}`, then download `/v1/documents/{id}/download`. Extraction quality and the model's answer quality are different: the experiment above measures document extraction, not Qwen reasoning accuracy.
+
+## Performance measurement details
 
 These are **three different comparisons**. Do not combine them into a single speedup claim.
 
@@ -68,6 +136,23 @@ The initial router already supported explicit affinity headers. A client sending
 This is an **operational observation from different turns**, not a controlled replay with identical prompts. It demonstrates the cache-routing problem and fix; it is not a general model-speed benchmark. The previously displayed low end-to-end token rate included repeated prefill.
 
 Full local measurement notes, conditions, and limitations: [RESULTS.md](RESULTS.md) and [RESEARCH.md](RESEARCH.md). Original experiment artifacts are referenced there by host-local path and are not bundled with this recipe.
+
+## What changed, and why it helps
+
+| Area | Original Elpis / starting point | This recipe | Practical benefit and trade-off |
+|---|---|---|---|
+| GPU topology | One text engine on one RTX 3090 | One complete engine on each GPU; one active generation per engine | Two independent jobs can run concurrently. This is not tensor parallelism and does not double single-request speed. |
+| Request routing | Direct access to a text engine | A local router with health checks, per-engine admission, and conversation affinity | Clients use one endpoint; repeat turns preferentially reuse the engine holding their prefix cache. |
+| Clients without affinity headers | Our initial router balanced requests without recognizing the conversation | Derive an affinity key from the model and first two messages when no explicit header is supplied | Avoid unnecessary lane switching and repeated prefill. Affinity is best-effort, not a guarantee; availability and shared conversation prefixes matter. |
+| Image requests | Elpis text serving path | Route images to a separate local Ollama vision model | One API can serve text and images. Vision is not added to Elpis itself, and its context limit is separate. |
+| GPU sharing | No LLMRig media coordination | Reserve GPU1, wait for its text work, stop lane1, run media, then restore Elpis | Reuse the same hardware for text and media while lane0 remains available. Lane1's warm cache and second text slot are unavailable during media work. |
+| Multi-request media work | Per-request model transitions | Exclusive media sessions with idle and maximum-duration limits, cleanup, and startup recovery | Keep the media model loaded across a document/session rather than switching for every page. No quantified speedup is claimed for this addition. |
+| Auxiliary APIs | Separate application services | Routes for PDF/MinerU, OCR, transcription, embeddings, and auxiliary health | Existing local services share a gateway. Their models and servers remain separate dependencies. |
+| Sampling | Greedy Elpis text generation | Preserve greedy text; expose a separate `qwen3.8-27b-sampled` Ollama profile | Stochastic generation is available without changing Elpis's decoder. This profile uses a different backend and a 65,536-token context. |
+| Observability | Engine-local information | Usage JSONL, active-request tracking, GPU/RAM telemetry, slot availability at `/props` | Distinguish cache misses, waiting/prefill, and generated token counts. Stream timing is router-observed and is not a pure GPU decode benchmark. |
+| Terminal failures | Manual intervention for sticky native-generator failure | A separate recovery service confirms the failure and restarts only the failed, idle engine | Reduce manual recovery while preserving healthy engines. It never replays inference requests and does not prevent OOM. |
+| Host RAM | Upstream EXL3 entrypoint enables an 8 GiB host KV page tier | Disable the additional tier; retain GPU prefix cache and existing recurrent-state cache | Leave RAM for two engines and application services. A local 2 GiB tier experiment showed no meaningful TTFT benefit for the tested workload. |
+| Build and deployment | Upstream build/launch defaults | Lower build concurrency, serialize base fetching, pin the image, verify model hashes, use systemd and container limits | Fit the host's memory budget and detect accidental engine/model changes at startup. |
 
 ## What remains upstream, and what is disabled
 

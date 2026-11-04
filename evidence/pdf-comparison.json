@@ -1,0 +1,45 @@
+{
+  "source": "Recorded local MinerU Standard/Advanced comparison, 2026-10-22",
+  "pdf_sha256": "bdfaa68d8984f0dc02beaca527b76f207d99b666d31d1da728ee0728182df697",
+  "document_pages": 15,
+  "mineru_version": "4.0.12",
+  "runs": [
+    {
+      "name": "1-standard",
+      "tier": "standard",
+      "seconds": 39.979020833969116,
+      "peak_pss_mib": 4010.611328125,
+      "peak_gpu_mib": 2069,
+      "qwen_busy_samples": 8,
+      "sample_count": 40
+    },
+    {
+      "name": "2-advanced",
+      "tier": "advanced",
+      "seconds": 96.04059290885925,
+      "peak_pss_mib": 4127.7490234375,
+      "peak_gpu_mib": 2321,
+      "qwen_busy_samples": 90,
+      "sample_count": 93
+    },
+    {
+      "name": "3-advanced",
+      "tier": "advanced",
+      "seconds": 92.93533086776733,
+      "peak_pss_mib": 4162.732421875,
+      "peak_gpu_mib": 2321,
+      "qwen_busy_samples": 88,
+      "sample_count": 90
+    },
+    {
+      "name": "4-standard",
+      "tier": "standard",
+      "seconds": 42.99058675765991,
+      "peak_pss_mib": 3847.3466796875,
+      "peak_gpu_mib": 2137,
+      "qwen_busy_samples": 43,
+      "sample_count": 43
+    }
+  ],
+  "scope": "Timing/resource records only. The 4/8 and 7/8 focused checks in README are manual inspection results from the accompanying local REPORT.md, not computed from these timings."
+}

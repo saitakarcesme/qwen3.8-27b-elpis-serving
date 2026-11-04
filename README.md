@@ -1,6 +1,8 @@
-# LLMRig: Elpis Dual-GPU 262K Recipe
+# Qwen3.8-27B Serving with Elpis
 
-A deployment recipe for running two independent Elpis text engines on **2 × RTX 3090 (24 GiB each)**, with cache-aware routing and shared access to GPU1 for image and document workloads on a **32 GB RAM host**.
+A serving recipe for **Qwen3.8-27B** built on **Elpis**, with **262K text context**, cache-aware request routing, image and document service integration, and automatic engine recovery.
+
+The reference deployment runs two independent text engines on **2 × RTX 3090 (24 GiB each)** with a **32 GB RAM host**. GPU1 is shared with the separate image and document backends.
 
 **Credit:** the inference engine and its optimizations are [Elpis](https://github.com/gildrb/elpis), by **Gil Rodrigues / gildrb**. This recipe adds deployment and service orchestration around Elpis. It does not claim authorship of Elpis's kernels, DFlash2 implementation, quantization, or native long-context support.
 

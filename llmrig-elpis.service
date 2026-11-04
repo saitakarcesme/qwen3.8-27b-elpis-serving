@@ -1,0 +1,23 @@
+[Unit]
+Description=LLMRig Elpis dual RTX 3090 native 262K
+After=network-online.target
+Conflicts=llmrig-homelab.service
+
+[Service]
+Type=notify
+NotifyAccess=main
+WorkingDirectory=/home/isa/Projects/llmrig/recipes/elpis-dual-262k
+ExecStart=/home/isa/Projects/llmrig/recipes/elpis-dual-262k/start.sh
+ExecStop=/usr/bin/docker compose --project-name llmrig-elpis-dual --file /home/isa/Projects/llmrig/recipes/elpis-dual-262k/compose.yaml stop
+TimeoutStartSec=600
+TimeoutStopSec=120
+Restart=on-failure
+RestartSec=10
+KillMode=control-group
+MemoryMax=512M
+UMask=0077
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,12 @@
+__pycache__/
+.pytest_cache/
+*.pyc
+api-key
+config.local.toml
+
+# Machine state, credentials, and operational backups
+media-session-state.json
+*.before-*
+.env
+.env.*
+usage.jsonl

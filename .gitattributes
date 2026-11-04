@@ -1,0 +1,2 @@
+# Unified patch context uses a single leading space on blank lines.
+build-32gb.patch whitespace=-blank-at-eol

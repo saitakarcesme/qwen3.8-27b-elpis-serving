@@ -1,0 +1,23 @@
+{
+  "created_unix": 1793308061.4649286,
+  "elpis_commit": "13e8b593ea4c65f605b5fe7ac7d5ebb7a24f3c19",
+  "baseline_model": "Qwen3.8-27B EXL3 3.5bpw MTP",
+  "kv_bits": 4,
+  "context": 262144,
+  "gpus": 2,
+  "native_harness_sha256": "e2a5df974a21ac6ffddeb5e21a296b4dd397a0a2f0710e48441f44e62ea21c94",
+  "adapter_sha256": "4d35f3b56ed8d32fc72322c612804265213b39fa0df001d8920fbee0fecf915c",
+  "shared_memory": "Fresh private IPC + mount namespace; host stale files untouched",
+  "power_scope": "GPU0 only in upstream native metric; do not compare energy across arms",
+  "baseline_code_commit": "622c7965ed5e02a13b188c9ef21bb9857fd2ba28",
+  "files_sha256": {
+    "baseline_native.py": "cc9c85a435bc59bd728d5dcbf8a6091af82e1375f8c06df0bee3b24816ee7847",
+    "elpis_native.py": "703fc24bbe721b0364d60aee69c3c440a355d35c8acedf15722788bda1fb7b24",
+    "elpis/bench/ar_gpu.py": "e2a5df974a21ac6ffddeb5e21a296b4dd397a0a2f0710e48441f44e62ea21c94",
+    "elpis/docker/base/sources.lock": "22d8cbf9b63a1095c36d01dacd50c6deb086ca55a72430192268240576d3fc70",
+    "elpis/patches/exl3/exl3-patches.json": "66bfb3a03c6f9d88b35b7917d2a0a4967909304b28cb05fa078d4aa98342b4cf",
+    "elpis/patches/exl3-ext/exl3-ext.json": "e9ae67da428cd054c15ba528b27011f8f7fd430efac8c62ca6fad791e7d6dcf0"
+  },
+  "elpis_image_id": "sha256:2446a45495af44611a5a3c4ee1986a1f79a6acb29d04619629484d6d4527486d",
+  "base_content_manifest": "5d14b597feae50c6b60c85ae75f6eacac21ca7605101081373b9d8da0b10db65"
+}

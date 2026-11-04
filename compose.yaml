@@ -1,0 +1,40 @@
+x-engine: &engine
+  image: llmrig-elpis:20261029
+  pull_policy: never
+  user: "1000:1000"
+  init: true
+  restart: unless-stopped
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  shm_size: 4gb
+  tmpfs: ["/tmp:rw,nosuid,size=2g", "/run:rw,nosuid,size=64m"]
+  environment:
+    QWEN_PREFIX_PERSIST: "0"
+  volumes:
+    - /home/isa/models/elpis-262k:/models:ro
+    - /home/isa/.local/share/llmrig-elpis/cache:/cache
+    - /home/isa/.local/share/llmrig-elpis/api-key:/app/api_key.txt:ro
+  entrypoint: ["/opt/venv/bin/python", "-B", "/opt/qwen/serve/exl3_server.py"]
+  healthcheck:
+    test: ["CMD", "/opt/venv/bin/python", "-B", "/opt/qwen/serve/healthcheck.py"]
+    interval: 15s
+    timeout: 10s
+    start_period: 120s
+    retries: 4
+  stop_grace_period: 45s
+services:
+  lane0:
+    <<: *engine
+    container_name: llmrig-elpis-lane0
+    devices: ["nvidia.com/gpu=0"]
+    ports: ["127.0.0.1:18020:18020"]
+    mem_limit: 11g
+    command: ["--target","/models/qwen38-27b-exl3","--draft","/models/dflash2-exl3","--model-name","qwen3.8-27b","--max-model-len","262144","--cache-tokens","270336","--cq","3","--host","0.0.0.0","--port","18020","--cpu-cache-gib","0"]
+  lane1:
+    <<: *engine
+    container_name: llmrig-elpis-lane1
+    devices: ["nvidia.com/gpu=1"]
+    ports: ["127.0.0.1:18021:18020"]
+    mem_limit: 11g
+    command: ["--target","/models/qwen38-27b-exl3","--draft","/models/dflash2-exl3","--model-name","qwen3.8-27b","--max-model-len","262144","--cache-tokens","270336","--cq","3","--host","0.0.0.0","--port","18020","--cpu-cache-gib","0"]

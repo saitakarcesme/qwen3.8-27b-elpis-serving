@@ -1,0 +1,56 @@
+diff --git i/Dockerfile.exl3 w/Dockerfile.exl3
+index 205ff86..249ef44 100644
+--- i/Dockerfile.exl3
++++ w/Dockerfile.exl3
+@@ -105,7 +105,7 @@ FROM nvidia/cuda:13.0.0-devel-ubuntu24.04@sha256:1e8ac7a54c184a1af8ef2167f28fa98
+ ARG SOURCE_DATE_EPOCH
+ ENV DEBIAN_FRONTEND=noninteractive \
+     TORCH_CUDA_ARCH_LIST=8.6 \
+-    MAX_JOBS=16 \
++    MAX_JOBS=2 \
+     PATH=/opt/venv/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ COPY --from=candidate /opt/uv-python /opt/uv-python
+ COPY --from=candidate /opt/venv /opt/venv
+diff --git i/docker/base/Dockerfile w/docker/base/Dockerfile
+index 1fae72d..0d4582f 100644
+--- i/docker/base/Dockerfile
++++ w/docker/base/Dockerfile
+@@ -17,7 +17,7 @@ ARG SOURCE_DATE_EPOCH
+ ENV DEBIAN_FRONTEND=noninteractive \
+     PYTHONUNBUFFERED=1 \
+     TORCH_CUDA_ARCH_LIST=8.6 \
+-    MAX_JOBS=8 \
++    MAX_JOBS=2 \
+     UV_PYTHON_INSTALL_DIR=/opt/uv-python \
+     UV_PYTHON_PREFERENCE=only-managed \
+     UV_NO_CACHE=1 \
+diff --git i/docker/fetch-base.sh w/docker/fetch-base.sh
+index 84753f4..7212d71 100755
+--- i/docker/fetch-base.sh
++++ w/docker/fetch-base.sh
+@@ -5,6 +5,8 @@
+ # keeps no partial file. The base and image builds then run with no network.
+ #   bash docker/fetch-base.sh
+ set -euo pipefail
++exec 9>/home/isa/Experiments/elpis-comparison-20261029/fetch-base.lock
++flock 9
+ umask 022
+ if (( $# != 0 )); then
+   echo "Usage: bash docker/fetch-base.sh" >&2
+diff --git i/serve/exl3-entrypoint.sh w/serve/exl3-entrypoint.sh
+index 59682b4..a2c5c03 100755
+--- i/serve/exl3-entrypoint.sh
++++ w/serve/exl3-entrypoint.sh
+@@ -22,9 +22,9 @@ fi
+   --representation exl3
+ 
+ echo "UNQUALIFIED EXL3 + native DFlash2: native context262144/cache270336/CQ3; no capacity, quality or performance claim." >&2
+-# Host-RAM page tier: evicted prefix pages wait in 8 GiB of pinned host memory and come back on a
+-# prefix hit. The persistent prefix cache refuses to run with the tier on, so /prefix-cache is unused.
++# LLMRig 32GiB profile: no additional pinned host-RAM page tier.
++# GPU prefix cache remains available; persistence is disabled by the launch profile.
+ exec /opt/venv/bin/python -B /opt/qwen/serve/exl3_server.py \
+   --target /models/qwen38-27b-exl3 --draft /models/dflash2-exl3 \
+   --model-name qwen3.8-27b --max-model-len 262144 --cache-tokens 270336 \
+-  --cq 3 --host 0.0.0.0 --port 18020 --cpu-cache-gib 8
++  --cq 3 --host 0.0.0.0 --port 18020 --cpu-cache-gib 0

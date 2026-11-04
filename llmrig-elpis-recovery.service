@@ -1,0 +1,16 @@
+[Unit]
+Description=LLMRig terminal native failure recovery
+After=llmrig-elpis.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python -B /home/isa/Projects/llmrig/recipes/elpis-dual-262k/recovery.py
+Restart=on-failure
+RestartSec=15
+UMask=0077
+MemoryMax=128M
+NoNewPrivileges=true
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,20 @@
+{
+  "ports": [
+    18020,
+    18021
+  ],
+  "port": 11446,
+  "alias_ports": [
+    11445,
+    11434
+  ],
+  "api_key_file": "/home/isa/.local/share/llmrig-elpis/api-key",
+  "vision_container": "llmrig-elpis-lane1",
+  "vision_model": "qwen2.5vl:3b",
+  "vision_port": 11436,
+  "vision_lane": 1,
+  "pdf_port": 11447,
+  "media_lock": "/home/isa/Projects/llmrig/pdf-api/gpu-switch.lock",
+  "multimodal_model": "Qwen3.8-27B-Uncensored:homelab-q4-64k",
+  "extension_port": 11450
+}
